@@ -240,6 +240,9 @@
                     <div class="action-buttons">
                         <button class="btn btn-sm" onclick="showAddItemModal()">+ 添加物品</button>
                         <button class="btn btn-sm btn-secondary" onclick="showImportModal()">📥 批量导入</button>
+                        <button class="btn btn-sm btn-success" onclick="exportItems()">📤 导出 CSV</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showTrashTab()">🗑️ 回收站</button>
+                        <input type="text" id="searchInput" placeholder="🔍 搜索物品名称或备注..." style="padding: 8px 16px; border-radius: 6px; border: 1px solid #ddd; flex: 1; max-width: 300px;" oninput="searchItems()">
                         <select id="categoryFilter" onchange="filterItems()" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #ddd;">
                             <option value="">所有类别</option>
                         </select>
@@ -248,6 +251,16 @@
                         </select>
                     </div>
                     <div class="grid" id="itemsGrid"></div>
+                </div>
+            </div>
+
+            <div id="trashTab" class="hidden">
+                <div class="card">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-secondary" onclick="showItemsTab()">← 返回物品列表</button>
+                        <h3 style="margin: 0; color: #7f8c8d;">🗑️ 回收站</h3>
+                    </div>
+                    <div class="grid" id="trashGrid"></div>
                 </div>
             </div>
 
@@ -451,6 +464,16 @@
                 <textarea id="editItemRemarks" rows="3"></textarea>
             </div>
             <button class="btn" onclick="saveItemEdit()">保存</button>
+        </div>
+    </div>
+
+    <div id="itemDetailModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>物品详情</h3>
+                <button class="close-btn" onclick="closeModal('itemDetailModal')">&times;</button>
+            </div>
+            <div id="itemDetailContent"></div>
         </div>
     </div>
 
@@ -828,8 +851,9 @@
                 
                 const card = document.createElement('div');
                 card.className = classes;
+                card.style.cursor = 'pointer';
                 card.innerHTML = `
-                    ${item.photo_path ? `<div style="margin-bottom: 15px;"><img src="/uploads/${item.photo_path}" style="max-width: 100%; max-height: 150px; border-radius: 8px; object-fit: cover;"></div>` : ''}
+                    ${item.photo_path ? `<div style="margin-bottom: 15px;"><img src="/uploads/${item.photo_path}" style="max-width: 100%; max-height: 150px; border-radius: 8px; object-fit: cover; pointer-events: none;"></div>` : ''}
                     <div class="item-name">${item.name}${item.spec ? ` (${item.spec})` : ''}</div>
                     <div class="item-meta">
                         <span class="item-tag">${item.category}</span>
@@ -839,13 +863,14 @@
                     ${item.purchase_date ? `<p style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">购入：${new Date(item.purchase_date).toLocaleDateString()}</p>` : ''}
                     ${item.expiry_date ? `<p style="margin-top: 5px; color: ${new Date(item.expiry_date) < new Date() ? '#e74c3c' : '#7f8c8d'}; font-size: 12px;">过期：${new Date(item.expiry_date).toLocaleDateString()}</p>` : ''}
                     ${item.remarks ? `<p style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">${item.remarks}</p>` : ''}
-                    <div class="item-actions">
+                    <div class="item-actions" onclick="event.stopPropagation();">
                         <button class="btn btn-sm btn-success" onclick="showQuickInOut(${item.id}, 'in')">+ 入库</button>
                         <button class="btn btn-sm btn-danger" onclick="showQuickInOut(${item.id}, 'out')">- 出库</button>
                         <button class="btn btn-sm btn-secondary" onclick="editItem(${item.id})">编辑</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteItem(${item.id})">删除</button>
                     </div>
                 `;
+                card.onclick = () => showItemDetail(item.id);
                 grid.appendChild(card);
             });
             
@@ -888,6 +913,227 @@
             if (locationId) filtered = filtered.filter(i => i.location_id == locationId);
             
             renderItems(filtered);
+        }
+
+        async function searchItems() {
+            const keyword = document.getElementById('searchInput').value.trim();
+            
+            if (!keyword) {
+                await loadItems();
+                return;
+            }
+            
+            const results = await api(`/items/search/?keyword=${encodeURIComponent(keyword)}`);
+            if (results) {
+                renderItems(results);
+            }
+        }
+
+        function showItemsTab() {
+            document.querySelectorAll('[id$="Tab"]').forEach(t => t.classList.add('hidden'));
+            document.getElementById('itemsTab').classList.remove('hidden');
+            loadItems();
+        }
+
+        async function showTrashTab() {
+            document.querySelectorAll('[id$="Tab"]').forEach(t => t.classList.add('hidden'));
+            document.getElementById('trashTab').classList.remove('hidden');
+            await loadTrash();
+        }
+
+        async function loadTrash() {
+            const items = await api('/items/trash/') || [];
+            const grid = document.getElementById('trashGrid');
+            grid.innerHTML = '';
+            
+            items.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'item-card';
+                card.innerHTML = `
+                    ${item.photo_path ? `<div style="margin-bottom: 15px;"><img src="/uploads/${item.photo_path}" style="max-width: 100%; max-height: 100px; border-radius: 8px; object-fit: cover; opacity: 0.5;"></div>` : ''}
+                    <div class="item-name">${item.name}${item.spec ? ` (${item.spec})` : ''}</div>
+                    <div class="item-meta">
+                        <span class="item-tag">${item.category}</span>
+                    </div>
+                    <div class="item-quantity">${item.quantity} ${item.unit}</div>
+                    <p style="margin-top: 10px; color: #e74c3c; font-size: 12px;">删除时间：${new Date(item.deleted_at).toLocaleString()}</p>
+                    <div class="item-actions" style="margin-top: 15px;">
+                        <button class="btn btn-sm btn-success" onclick="restoreItem(${item.id})">↩️ 恢复</button>
+                        <button class="btn btn-sm btn-danger" onclick="permanentDeleteItem(${item.id})">🗑️ 永久删除</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            
+            if (items.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #95a5a6; padding: 40px;">回收站为空</p>';
+            }
+        }
+
+        async function restoreItem(itemId) {
+            if (!confirm('确定要恢复此物品吗？')) return;
+            
+            const result = await api(`/items/${itemId}/restore/`, 'POST');
+            if (result) {
+                alert('物品已恢复');
+                loadTrash();
+                loadDashboard();
+            }
+        }
+
+        async function permanentDeleteItem(itemId) {
+            if (!confirm('确定要永久删除此物品吗？此操作不可撤销！')) return;
+            
+            const result = await api(`/items/${itemId}/permanent/`, 'DELETE');
+            if (result) {
+                alert('物品已永久删除');
+                loadTrash();
+            }
+        }
+
+        async function exportItems() {
+            if (!currentFamilyId) {
+                alert('请先选择家庭');
+                return;
+            }
+            
+            const response = await fetch('/items/export/', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }
+        }
+
+        async function showItemDetail(itemId) {
+            const data = await api(`/items/${itemId}/detail/`);
+            if (!data) return;
+            
+            const item = data.item;
+            const records = data.records;
+            const locationPath = data.location_path;
+            
+            const content = document.getElementById('itemDetailContent');
+            
+            let locationBreadcrumb = '';
+            if (locationPath && locationPath.length > 0) {
+                locationBreadcrumb = locationPath.map((loc, idx) => 
+                    `<span style="color: #3498db;">${loc.name}</span>${idx < locationPath.length - 1 ? ' → ' : ''}`
+                ).join('');
+            } else {
+                locationBreadcrumb = '<span style="color: #95a5a6;">未设置位置</span>';
+            }
+            
+            let recordsHtml = '';
+            if (records && records.length > 0) {
+                recordsHtml = records.map(r => {
+                    const typeColors = {
+                        '入库': '#27ae60',
+                        '出库': '#e74c3c',
+                        '消耗': '#f39c12',
+                        '丢弃': '#95a5a6',
+                        '调整': '#3498db'
+                    };
+                    const color = typeColors[r.operation_type] || '#7f8c8d';
+                    return `
+                        <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${color};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong style="color: ${color};">${r.operation_type}</strong>
+                                <span style="font-size: 12px; color: #95a5a6;">${new Date(r.created_at).toLocaleString()}</span>
+                            </div>
+                            <p style="margin: 5px 0;">数量变化：${r.quantity_change}</p>
+                            <p style="margin: 5px 0;">变更后数量：${r.quantity_after}</p>
+                            ${r.remarks ? `<p style="margin: 5px 0; color: #7f8c8d; font-size: 13px;">备注：${r.remarks}</p>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                recordsHtml = '<p style="text-align: center; color: #95a5a6; padding: 20px;">暂无出入库记录</p>';
+            }
+            
+            content.innerHTML = `
+                ${item.photo_path ? `
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img src="/uploads/${item.photo_path}" style="max-width: 100%; max-height: 300px; border-radius: 12px;">
+                    </div>
+                ` : ''}
+                
+                <h2 style="margin-bottom: 15px; color: #2c3e50;">${item.name}${item.spec ? ` (${item.spec})` : ''}</h2>
+                
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">类别</p>
+                            <p style="font-weight: 600; margin: 0;">${item.category}</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">当前库存</p>
+                            <p style="font-weight: 600; margin: 0; color: #27ae60;">${item.quantity} ${item.unit}</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">单价</p>
+                            <p style="font-weight: 600; margin: 0;">${item.price ? '¥' + item.price : '-'}</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">总价值</p>
+                            <p style="font-weight: 600; margin: 0; color: #e67e22;">${item.price ? '¥' + (item.quantity * item.price).toFixed(2) : '-'}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <p style="font-size: 14px; color: #7f8c8d; margin-bottom: 8px;">📍 存放位置</p>
+                    <div style="padding: 10px; background: #e8f4fd; border-radius: 6px;">
+                        ${locationBreadcrumb}
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    ${item.purchase_date ? `
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">购入日期</p>
+                            <p style="margin: 0;">${new Date(item.purchase_date).toLocaleDateString()}</p>
+                        </div>
+                    ` : ''}
+                    ${item.expiry_date ? `
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">过期日期</p>
+                            <p style="margin: 0; color: ${new Date(item.expiry_date) < new Date() ? '#e74c3c' : 'inherit'};">${new Date(item.expiry_date).toLocaleDateString()}</p>
+                        </div>
+                    ` : ''}
+                    ${item.low_stock_threshold > 0 ? `
+                        <div>
+                            <p style="font-size: 12px; color: #95a5a6; margin-bottom: 5px;">低库存阈值</p>
+                            <p style="margin: 0; color: ${item.quantity <= item.low_stock_threshold ? '#e74c3c' : 'inherit'};">${item.low_stock_threshold} ${item.unit}</p>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                ${item.remarks ? `
+                    <div style="margin-bottom: 20px;">
+                        <p style="font-size: 12px; color: #95a5a6; margin-bottom: 8px;">备注</p>
+                        <p style="padding: 12px; background: #f8f9fa; border-radius: 6px; margin: 0;">${item.remarks}</p>
+                    </div>
+                ` : ''}
+                
+                <div>
+                    <h4 style="margin-bottom: 15px; color: #2c3e50;">📋 出入库记录</h4>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        ${recordsHtml}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('itemDetailModal').classList.add('active');
         }
 
         async function showAddItemModal() {

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 import uuid
 import os
+import csv
 import pandas as pd
 import aiofiles
 import httpx
@@ -618,6 +619,201 @@ async def upload_item_photo(
     item.photo_path = filename
     await db.commit()
     return {"photo_path": filename, "message": "照片上传成功"}
+
+
+@app.get("/items/search/")
+async def search_items(
+    keyword: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.current_family_id:
+        return []
+    
+    result = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.family_id == current_user.current_family_id,
+            Item.is_deleted == False,
+            or_(
+                Item.name.ilike(f"%{keyword}%"),
+                Item.remarks.ilike(f"%{keyword}%")
+            )
+        ))
+    )
+    return result.scalars().all()
+
+
+@app.get("/items/trash/")
+async def get_trash_items(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.current_family_id:
+        return []
+    
+    result = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.family_id == current_user.current_family_id,
+            Item.is_deleted == True
+        ))
+    )
+    return result.scalars().all()
+
+
+@app.post("/items/{item_id}/restore/")
+async def restore_item(
+    item_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    item = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.id == item_id,
+            Item.family_id == current_user.current_family_id
+        ))
+    )
+    item = item.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="物品不存在")
+    
+    item.is_deleted = False
+    item.deleted_at = None
+    
+    if item.quantity > 0:
+        record = InventoryRecord(
+            item_id=item.id,
+            operation_type=OperationType.IN,
+            quantity_before=0,
+            quantity_after=item.quantity,
+            quantity_change=item.quantity,
+            operator_id=current_user.id,
+            remarks="从回收站恢复"
+        )
+        db.add(record)
+    
+    await db.commit()
+    return {"message": "物品已恢复"}
+
+
+@app.delete("/items/{item_id}/permanent/")
+async def permanent_delete_item(
+    item_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    item = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.id == item_id,
+            Item.family_id == current_user.current_family_id
+        ))
+    )
+    item = item.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="物品不存在")
+    
+    await db.execute(
+        InventoryRecord.__table__.delete().where(InventoryRecord.item_id == item_id)
+    )
+    
+    if item.photo_path:
+        old_path = os.path.join("uploads", item.photo_path)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    
+    await db.delete(item)
+    await db.commit()
+    return {"message": "物品已永久删除"}
+
+
+@app.get("/items/export/")
+async def export_items(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.current_family_id:
+        raise HTTPException(status_code=400, detail="请先选择一个家庭")
+    
+    result = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.family_id == current_user.current_family_id,
+            Item.is_deleted == False
+        ))
+    )
+    items = result.scalars().all()
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "名称", "类别", "数量", "单位", "规格", "存放位置", "购入日期", "过期日期", "单价", "总价值", "低库存阈值", "备注"])
+    
+    for item in items:
+        location_name = item.location.name if item.location else ""
+        total_value = (item.quantity * item.price) if item.price else 0
+        writer.writerow([
+            item.id,
+            item.name,
+            item.category,
+            item.quantity,
+            item.unit,
+            item.spec or "",
+            location_name,
+            item.purchase_date.strftime("%Y-%m-%d") if item.purchase_date else "",
+            item.expiry_date.strftime("%Y-%m-%d") if item.expiry_date else "",
+            item.price or "",
+            total_value,
+            item.low_stock_threshold,
+            item.remarks or ""
+        ])
+    
+    output.seek(0)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=inventory_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+
+@app.get("/items/{item_id}/detail/")
+async def get_item_detail(
+    item_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    item = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.id == item_id,
+            Item.family_id == current_user.current_family_id
+        ))
+    )
+    item = item.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="物品不存在")
+    
+    records_result = await db.execute(
+        select(InventoryRecord)
+        .where(InventoryRecord.item_id == item_id)
+        .order_by(InventoryRecord.created_at.desc())
+    )
+    records = records_result.scalars().all()
+    
+    location_path = []
+    if item.location:
+        loc = item.location
+        while loc:
+            location_path.insert(0, {"id": loc.id, "name": loc.name})
+            loc = await db.get(Location, loc.parent_id) if loc.parent_id else None
+    
+    return {
+        "item": item,
+        "records": records,
+        "location_path": location_path
+    }
 
 
 @app.post("/items/import/")
