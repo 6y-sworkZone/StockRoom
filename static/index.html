@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家庭物品库存管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        /* 登录/注册表单 */
+        .auth-card { max-width: 400px; margin: 100px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .auth-card h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #34495e; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px 16px; border: 2px solid #e0e6ed; border-radius: 8px; font-size: 14px; transition: border-color 0.3s; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #3498db; }
+        .btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .btn-secondary { background: #95a5a6; }
+        .btn-danger { background: #e74c3c; }
+        .btn-success { background: #27ae60; }
+        .btn-sm { padding: 8px 16px; font-size: 14px; width: auto; }
+        .switch-auth { text-align: center; margin-top: 20px; color: #7f8c8d; }
+        .switch-auth a { color: #3498db; cursor: pointer; text-decoration: none; }
+        
+        /* 主界面 */
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 0; margin-bottom: 30px; }
+        .header .container { display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 24px; }
+        .user-info { display: flex; align-items: center; gap: 20px; }
+        .family-selector { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 16px; border-radius: 6px; }
+        .family-selector option { color: #333; }
+        .logout-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+        
+        /* 标签页 */
+        .tabs { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; }
+        .tab { padding: 12px 24px; background: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; color: #7f8c8d; transition: all 0.3s; }
+        .tab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .tab:hover { background: #e8f4fd; }
+        
+        /* 卡片 */
+        .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .card h2 { color: #2c3e50; margin-bottom: 20px; font-size: 20px; }
+        
+        /* 网格布局 */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        
+        /* 物品卡片 */
+        .item-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-left: 4px solid #3498db; transition: transform 0.2s; }
+        .item-card:hover { transform: translateY(-4px); }
+        .item-card.expired { border-left-color: #e74c3c; }
+        .item-card.expiring { border-left-color: #f39c12; }
+        .item-card.low-stock { border-left-color: #e67e22; }
+        .item-name { font-size: 18px; font-weight: 600; color: #2c3e50; margin-bottom: 10px; }
+        .item-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; }
+        .item-tag { background: #e8f4fd; color: #3498db; padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+        .item-quantity { font-size: 24px; font-weight: 700; color: #27ae60; }
+        .item-actions { display: flex; gap: 10px; margin-top: 15px; }
+        
+        /* 位置树 */
+        .location-tree { list-style: none; }
+        .location-item { padding: 10px 15px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s; }
+        .location-item:hover { background: #e8f4fd; }
+        .location-children { margin-left: 20px; margin-top: 8px; }
+        .location-header { display: flex; justify-content: space-between; align-items: center; }
+        .location-level-1 { font-weight: 600; }
+        .location-level-2 { font-weight: 500; }
+        .location-level-3 { font-weight: 400; }
+        
+        /* 出入库记录 */
+        .record-item { padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; }
+        .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .record-type { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .record-type.in { background: #d5f5e3; color: #27ae60; }
+        .record-type.out { background: #fadbd8; color: #e74c3c; }
+        .record-type.consume { background: #fff3cd; color: #856404; }
+        .record-type.adjust { background: #d1ecf1; color: #0c5460; }
+        
+        /* 统计图表 */
+        .chart-container { height: 300px; position: relative; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 12px; text-align: center; }
+        .stat-value { font-size: 36px; font-weight: 700; }
+        .stat-label { opacity: 0.9; margin-top: 8px; }
+        
+        /* 购物清单 */
+        .shopping-item { display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; }
+        .shopping-item.purchased { opacity: 0.6; text-decoration: line-through; }
+        .shopping-checkbox { width: 20px; height: 20px; cursor: pointer; }
+        .shopping-name { flex: 1; font-weight: 500; }
+        .shopping-qty { color: #7f8c8d; }
+        .auto-badge { background: #d4edda; color: #155724; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+        
+        /* 模态框 */
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h3 { color: #2c3e50; }
+        .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #95a5a6; }
+        
+        /* 警告列表 */
+        .warning-list .item-card { margin-bottom: 10px; }
+        .warning-title { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .warning-badge { padding: 6px 16px; border-radius: 20px; font-weight: 600; }
+        .warning-badge.expired { background: #fadbd8; color: #e74c3c; }
+        .warning-badge.expiring { background: #fff3cd; color: #856404; }
+        
+        /* 隐藏类 */
+        .hidden { display: none !important; }
+        
+        /* 操作按钮组 */
+        .action-buttons { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        
+        /* 导入区域 */
+        .import-area { border: 2px dashed #ddd; padding: 40px; text-align: center; border-radius: 8px; cursor: pointer; transition: border-color 0.3s; }
+        .import-area:hover { border-color: #3498db; }
+        .import-area input { display: none; }
+        
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .tabs { overflow-x: auto; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div id="authSection">
+        <div class="auth-card">
+            <h1>🏠 家庭物品库存管理</h1>
+            <div id="loginForm">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="loginUsername" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="loginPassword" placeholder="请输入密码">
+                </div>
+                <button class="btn" onclick="login()">登录</button>
+                <p class="switch-auth">还没有账号？<a onclick="showRegister()">立即注册</a></p>
+                <p class="switch-auth">有邀请码？<a onclick="showInvitation()">输入邀请码</a></p>
+            </div>
+            <div id="registerForm" class="hidden">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="regUsername" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>邮箱</label>
+                    <input type="email" id="regEmail" placeholder="请输入邮箱">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="regPassword" placeholder="请输入密码">
+                </div>
+                <button class="btn" onclick="register()">注册</button>
+                <p class="switch-auth">已有账号？<a onclick="showLogin()">立即登录</a></p>
+            </div>
+            <div id="invitationForm" class="hidden">
+                <div class="form-group">
+                    <label>邀请码</label>
+                    <input type="text" id="invitationCode" placeholder="请输入邀请码">
+                </div>
+                <button class="btn" onclick="useInvitation()">加入家庭</button>
+                <p class="switch-auth"><a onclick="showLogin()">返回登录</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainSection" class="hidden">
+        <div class="header">
+            <div class="container">
+                <h1>🏠 家庭物品库存管理</h1>
+                <div class="user-info">
+                    <select id="familySelector" class="family-selector" onchange="switchFamily()">
+                        <option value="">选择家庭</option>
+                    </select>
+                    <span id="usernameDisplay"></span>
+                    <button class="logout-btn" onclick="logout()">退出</button>
+                </div>
+            </div>
+        </div>
+        <div class="container">
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('dashboard')">📊 概览</button>
+                <button class="tab" onclick="showTab('items')">📦 物品</button>
+                <button class="tab" onclick="showTab('locations')">📍 位置</button>
+                <button class="tab" onclick="showTab('records')">📋 记录</button>
+                <button class="tab" onclick="showTab('warnings')">⚠️ 预警</button>
+                <button class="tab" onclick="showTab('shopping')">🛒 购物清单</button>
+                <button class="tab" onclick="showTab('family')">👨‍👩‍👧‍👦 家庭</button>
+            </div>
+
+            <div id="dashboardTab">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalItems">0</div>
+                        <div class="stat-label">物品总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalValue">¥0</div>
+                        <div class="stat-label">总价值</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="expiredCount">0</div>
+                        <div class="stat-label">已过期</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="lowStockCount">0</div>
+                        <div class="stat-label">低库存</div>
+                    </div>
+                </div>
+                <div class="grid">
+                    <div class="card">
+                        <h2>类别分布</h2>
+                        <div class="chart-container">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>月度趋势</h2>
+                        <div class="chart-container">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>位置分布</h2>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="locationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="itemsTab" class="hidden">
+                <div class="card">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm" onclick="showAddItemModal()">+ 添加物品</button>
+                        <button class="btn btn-sm btn-secondary" onclick="showImportModal()">📥 批量导入</button>
+                        <select id="categoryFilter" onchange="filterItems()" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="">所有类别</option>
+                        </select>
+                        <select id="locationFilter" onchange="filterItems()" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #ddd;">
+                            <option value="">所有位置</option>
+                        </select>
+                    </div>
+                    <div class="grid" id="itemsGrid"></div>
+                </div>
+            </div>
+
+            <div id="locationsTab" class="hidden">
+                <div class="card">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm" onclick="showAddLocationModal()">+ 添加位置</button>
+                    </div>
+                    <ul class="location-tree" id="locationTree"></ul>
+                </div>
+            </div>
+
+            <div id="recordsTab" class="hidden">
+                <div class="card">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm" onclick="showAddRecordModal()">+ 手动记录</button>
+                    </div>
+                    <div id="recordsList"></div>
+                </div>
+            </div>
+
+            <div id="warningsTab" class="hidden">
+                <div class="card">
+                    <div class="warning-title">
+                        <span class="warning-badge expired">已过期</span>
+                    </div>
+                    <div class="warning-list" id="expiredList"></div>
+                </div>
+                <div class="card">
+                    <div class="warning-title">
+                        <span class="warning-badge expiring">即将过期</span>
+                    </div>
+                    <div class="warning-list" id="expiringList"></div>
+                </div>
+                <div class="card">
+                    <h2>类别预警设置</h2>
+                    <div class="action-buttons">
+                        <input type="text" id="warningCategory" placeholder="类别名称" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd;">
+                        <input type="number" id="warningDays" value="7" min="1" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; width: 100px;">
+                        <button class="btn btn-sm" onclick="setCategoryWarning()">设置预警天数</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="shoppingTab" class="hidden">
+                <div class="card">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm" onclick="generateShoppingList()">🔄 智能生成</button>
+                        <button class="btn btn-sm btn-secondary" onclick="addShoppingItem()">+ 添加项目</button>
+                        <button class="btn btn-sm btn-success" onclick="shareShoppingList()">📤 分享清单</button>
+                    </div>
+                    <div id="shoppingList"></div>
+                </div>
+            </div>
+
+            <div id="familyTab" class="hidden">
+                <div class="card">
+                    <h2>创建家庭</h2>
+                    <div class="form-group">
+                        <label>家庭名称</label>
+                        <input type="text" id="newFamilyName" placeholder="请输入家庭名称">
+                    </div>
+                    <div class="form-group">
+                        <label>描述</label>
+                        <textarea id="newFamilyDesc" placeholder="家庭描述（选填）" rows="3"></textarea>
+                    </div>
+                    <button class="btn btn-sm" onclick="createFamily()">创建家庭</button>
+                </div>
+                <div class="card">
+                    <h2>生成邀请码</h2>
+                    <button class="btn btn-sm" onclick="generateInvitation()">生成邀请码</button>
+                    <div id="invitationResult" style="margin-top: 15px; padding: 15px; background: #e8f8f5; border-radius: 8px; display: none;">
+                        <strong>邀请码：</strong><span id="generatedCode" style="font-size: 24px; font-weight: bold; color: #27ae60;"></span>
+                        <p style="margin-top: 8px; color: #7f8c8d; font-size: 12px;">7天内有效</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>家庭成员</h2>
+                    <div id="membersList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addItemModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加物品</h3>
+                <button class="close-btn" onclick="closeModal('addItemModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>物品名称</label>
+                <input type="text" id="itemName" placeholder="请输入物品名称">
+            </div>
+            <div class="form-group">
+                <label>类别</label>
+                <input type="text" id="itemCategory" placeholder="如：食品、日用品、药品等">
+            </div>
+            <div class="form-group">
+                <label>数量</label>
+                <input type="number" id="itemQuantity" step="0.01" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>单位</label>
+                <input type="text" id="itemUnit" placeholder="如：个、瓶、盒等">
+            </div>
+            <div class="form-group">
+                <label>规格（选填）</label>
+                <input type="text" id="itemSpec" placeholder="如：500ml、1L等">
+            </div>
+            <div class="form-group">
+                <label>存放位置</label>
+                <select id="itemLocation"></select>
+            </div>
+            <div class="form-group">
+                <label>过期日期（选填）</label>
+                <input type="date" id="itemExpiry">
+            </div>
+            <div class="form-group">
+                <label>价格（选填）</label>
+                <input type="number" id="itemPrice" step="0.01" min="0" placeholder="单价">
+            </div>
+            <div class="form-group">
+                <label>低库存阈值</label>
+                <input type="number" id="itemLowStock" step="0.01" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>备注（选填）</label>
+                <textarea id="itemRemarks" rows="3"></textarea>
+            </div>
+            <button class="btn" onclick="addItem()">保存</button>
+        </div>
+    </div>
+
+    <div id="editItemModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑物品</h3>
+                <button class="close-btn" onclick="closeModal('editItemModal')">&times;</button>
+            </div>
+            <input type="hidden" id="editItemId">
+            <div class="form-group">
+                <label>物品名称</label>
+                <input type="text" id="editItemName">
+            </div>
+            <div class="form-group">
+                <label>类别</label>
+                <input type="text" id="editItemCategory">
+            </div>
+            <div class="form-group">
+                <label>数量</label>
+                <input type="number" id="editItemQuantity" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>单位</label>
+                <input type="text" id="editItemUnit">
+            </div>
+            <div class="form-group">
+                <label>规格</label>
+                <input type="text" id="editItemSpec">
+            </div>
+            <div class="form-group">
+                <label>存放位置</label>
+                <select id="editItemLocation"></select>
+            </div>
+            <div class="form-group">
+                <label>过期日期</label>
+                <input type="date" id="editItemExpiry">
+            </div>
+            <div class="form-group">
+                <label>价格</label>
+                <input type="number" id="editItemPrice" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>低库存阈值</label>
+                <input type="number" id="editItemLowStock" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <textarea id="editItemRemarks" rows="3"></textarea>
+            </div>
+            <button class="btn" onclick="saveItemEdit()">保存</button>
+        </div>
+    </div>
+
+    <div id="addLocationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加位置</h3>
+                <button class="close-btn" onclick="closeModal('addLocationModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>位置名称</label>
+                <input type="text" id="locationName" placeholder="如：客厅、电视柜、第二层等">
+            </div>
+            <div class="form-group">
+                <label>父级位置（选填）</label>
+                <select id="parentLocation">
+                    <option value="">无（一级位置）</option>
+                </select>
+            </div>
+            <button class="btn" onclick="addLocation()">保存</button>
+        </div>
+    </div>
+
+    <div id="addRecordModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>出入库记录</h3>
+                <button class="close-btn" onclick="closeModal('addRecordModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>选择物品</label>
+                <select id="recordItem"></select>
+            </div>
+            <div class="form-group">
+                <label>操作类型</label>
+                <select id="recordType">
+                    <option value="入库">入库</option>
+                    <option value="出库">出库</option>
+                    <option value="消耗">消耗</option>
+                    <option value="丢弃">丢弃</option>
+                    <option value="转移">转移</option>
+                    <option value="调整">调整</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>数量</label>
+                <input type="number" id="recordQuantity" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>备注（选填）</label>
+                <textarea id="recordRemarks" rows="3"></textarea>
+            </div>
+            <button class="btn" onclick="addRecord()">保存</button>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>批量导入物品</h3>
+                <button class="close-btn" onclick="closeModal('importModal')">&times;</button>
+            </div>
+            <div class="import-area" onclick="document.getElementById('importFile').click()">
+                <p>点击选择CSV文件或拖拽到此处</p>
+                <p style="font-size: 12px; color: #95a5a6; margin-top: 10px;">支持列名：name/名称、category/类别、quantity/数量、unit/单位、price/价格、spec/规格、remarks/备注、low_stock_threshold/低库存阈值</p>
+                <input type="file" id="importFile" accept=".csv" onchange="importItems(event)">
+            </div>
+        </div>
+    </div>
+
+    <div id="shoppingPurchaseModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认购买</h3>
+                <button class="close-btn" onclick="closeModal('shoppingPurchaseModal')">&times;</button>
+            </div>
+            <input type="hidden" id="purchaseItemId">
+            <div class="form-group">
+                <label>实际购买数量</label>
+                <input type="number" id="purchaseQuantity" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>单位</label>
+                <input type="text" id="purchaseUnit">
+            </div>
+            <div class="form-group">
+                <label>存放位置</label>
+                <select id="purchaseLocation"></select>
+            </div>
+            <div class="form-group">
+                <label>单价（选填）</label>
+                <input type="number" id="purchasePrice" step="0.01" min="0">
+            </div>
+            <button class="btn btn-success" onclick="confirmPurchase()">确认入库</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let token = localStorage.getItem('token');
+        let currentUser = null;
+        let currentFamilyId = null;
+        let allItems = [];
+        let allLocations = [];
+        let categoryChart, trendChart, locationChart;
+
+        async function api(url, method = 'GET', data = null) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            
+            const options = { method, headers };
+            if (data) options.body = JSON.stringify(data);
+            
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                logout();
+                return null;
+            }
+            return await res.json();
+        }
+
+        async function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('password', password);
+            
+            const res = await fetch('/token', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                token = data.access_token;
+                localStorage.setItem('token', token);
+                await loadUserInfo();
+                showMain();
+            } else {
+                alert('登录失败，请检查用户名和密码');
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            
+            const res = await fetch('/users/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password })
+            });
+            
+            if (res.ok) {
+                alert('注册成功，请登录');
+                showLogin();
+            } else {
+                alert('注册失败，用户名或邮箱可能已存在');
+            }
+        }
+
+        async function useInvitation() {
+            if (!token) {
+                alert('请先登录');
+                return;
+            }
+            const code = document.getElementById('invitationCode').value;
+            const res = await api('/invitations/use/', 'POST', { code });
+            if (res.message) {
+                alert(res.message);
+                await loadUserFamilies();
+                showMain();
+            } else {
+                alert('邀请码无效或已过期');
+            }
+        }
+
+        function logout() {
+            token = null;
+            currentUser = null;
+            currentFamilyId = null;
+            localStorage.removeItem('token');
+            showAuth();
+        }
+
+        function showLogin() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('invitationForm').classList.add('hidden');
+        }
+
+        function showRegister() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+            document.getElementById('invitationForm').classList.add('hidden');
+        }
+
+        function showInvitation() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('invitationForm').classList.remove('hidden');
+        }
+
+        function showAuth() {
+            document.getElementById('authSection').classList.remove('hidden');
+            document.getElementById('mainSection').classList.add('hidden');
+        }
+
+        function showMain() {
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('mainSection').classList.remove('hidden');
+            loadDashboard();
+        }
+
+        async function loadUserInfo() {
+            const user = await api('/users/me/');
+            if (user) {
+                currentUser = user;
+                currentFamilyId = user.current_family_id;
+                document.getElementById('usernameDisplay').textContent = user.username;
+                await loadUserFamilies();
+            }
+        }
+
+        async function loadUserFamilies() {
+            const families = await api('/users/me/families/');
+            const selector = document.getElementById('familySelector');
+            selector.innerHTML = '<option value="">选择家庭</option>';
+            
+            if (families && families.length) {
+                families.forEach(f => {
+                    const option = document.createElement('option');
+                    option.value = f.id;
+                    option.textContent = f.name;
+                    if (f.id === currentFamilyId) option.selected = true;
+                    selector.appendChild(option);
+                });
+                
+                if (!currentFamilyId && families.length > 0) {
+                    await switchFamilyInternal(families[0].id);
+                }
+            }
+        }
+
+        async function switchFamily() {
+            const familyId = parseInt(document.getElementById('familySelector').value);
+            if (familyId) {
+                await switchFamilyInternal(familyId);
+            }
+        }
+
+        async function switchFamilyInternal(familyId) {
+            await api(`/switch-family/${familyId}`, 'POST');
+            currentFamilyId = familyId;
+            document.getElementById('familySelector').value = familyId;
+            loadDashboard();
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('[id$="Tab"]').forEach(t => t.classList.add('hidden'));
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.remove('hidden');
+            
+            if (tabName === 'items') loadItems();
+            if (tabName === 'locations') loadLocations();
+            if (tabName === 'records') loadRecords();
+            if (tabName === 'warnings') loadWarnings();
+            if (tabName === 'shopping') loadShoppingList();
+            if (tabName === 'family') loadMembers();
+        }
+
+        async function loadDashboard() {
+            if (!currentFamilyId) return;
+            
+            const stats = await api('/statistics/');
+            if (stats) {
+                let totalItems = 0, totalValue = 0;
+                Object.values(stats.category_pie || {}).forEach(v => {
+                    totalItems += v.quantity || 0;
+                    totalValue += v.value || 0;
+                });
+                
+                document.getElementById('totalItems').textContent = Math.round(totalItems);
+                document.getElementById('totalValue').textContent = '¥' + totalValue.toFixed(2);
+                document.getElementById('lowStockCount').textContent = (stats.low_stock || []).length;
+                
+                renderCategoryChart(stats.category_pie || {});
+                renderTrendChart(stats.monthly_trend || {});
+                renderLocationChart(stats.location_bar || {});
+                
+                const warnings = await api('/warnings/expiry/');
+                if (warnings) {
+                    document.getElementById('expiredCount').textContent = (warnings.expired || []).length;
+                }
+            }
+        }
+
+        function renderCategoryChart(data) {
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            if (categoryChart) categoryChart.destroy();
+            
+            const labels = Object.keys(data);
+            const values = labels.map(l => data[l].quantity);
+            const colors = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 60%)`);
+            
+            categoryChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels, datasets: [{ data: values, backgroundColor: colors }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function renderTrendChart(data) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (trendChart) trendChart.destroy();
+            
+            const months = Object.keys(data).sort();
+            const inValues = months.map(m => data[m]['入库'] || 0);
+            const outValues = months.map(m => (data[m]['出库'] || 0) + (data[m]['消耗'] || 0));
+            
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [
+                        { label: '入库', data: inValues, borderColor: '#27ae60', fill: false },
+                        { label: '出库/消耗', data: outValues, borderColor: '#e74c3c', fill: false }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function renderLocationChart(data) {
+            const ctx = document.getElementById('locationChart').getContext('2d');
+            if (locationChart) locationChart.destroy();
+            
+            const labels = Object.keys(data);
+            const values = labels.map(l => data[l]);
+            const colors = labels.map((_, i) => `hsl(${200 + i * 30}, 70%, 60%)`);
+            
+            locationChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{ label: '物品数量', data: values, backgroundColor: colors }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+            });
+        }
+
+        async function loadItems() {
+            if (!currentFamilyId) return;
+            
+            allItems = await api('/items/') || [];
+            renderItems(allItems);
+            updateFilters();
+        }
+
+        function renderItems(items) {
+            const grid = document.getElementById('itemsGrid');
+            grid.innerHTML = '';
+            
+            items.forEach(item => {
+                let classes = 'item-card';
+                if (item.expiry_date && new Date(item.expiry_date) < new Date()) {
+                    classes += ' expired';
+                } else if (item.low_stock_threshold > 0 && item.quantity <= item.low_stock_threshold) {
+                    classes += ' low-stock';
+                }
+                
+                const card = document.createElement('div');
+                card.className = classes;
+                card.innerHTML = `
+                    <div class="item-name">${item.name}${item.spec ? ` (${item.spec})` : ''}</div>
+                    <div class="item-meta">
+                        <span class="item-tag">${item.category}</span>
+                        ${item.location ? `<span class="item-tag">📍 ${item.location.name}</span>` : ''}
+                    </div>
+                    <div class="item-quantity">${item.quantity} ${item.unit}</div>
+                    ${item.expiry_date ? `<p style="margin-top: 10px; color: ${new Date(item.expiry_date) < new Date() ? '#e74c3c' : '#7f8c8d'}; font-size: 12px;">过期：${new Date(item.expiry_date).toLocaleDateString()}</p>` : ''}
+                    ${item.remarks ? `<p style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">${item.remarks}</p>` : ''}
+                    <div class="item-actions">
+                        <button class="btn btn-sm btn-success" onclick="showQuickInOut(${item.id}, 'in')">+ 入库</button>
+                        <button class="btn btn-sm btn-danger" onclick="showQuickInOut(${item.id}, 'out')">- 出库</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editItem(${item.id})">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteItem(${item.id})">删除</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            
+            if (items.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #95a5a6; padding: 40px;">暂无物品，点击上方按钮添加</p>';
+            }
+        }
+
+        function updateFilters() {
+            const categories = [...new Set(allItems.map(i => i.category).filter(Boolean))];
+            const categoryFilter = document.getElementById('categoryFilter');
+            const currentValue = categoryFilter.value;
+            categoryFilter.innerHTML = '<option value="">所有类别</option>';
+            categories.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c;
+                option.textContent = c;
+                if (c === currentValue) option.selected = true;
+                categoryFilter.appendChild(option);
+            });
+            
+            const locationFilter = document.getElementById('locationFilter');
+            const locValue = locationFilter.value;
+            locationFilter.innerHTML = '<option value="">所有位置</option>';
+            allLocations.forEach(loc => {
+                const option = document.createElement('option');
+                option.value = loc.id;
+                option.textContent = loc.name;
+                if (loc.id == locValue) option.selected = true;
+                locationFilter.appendChild(option);
+            });
+        }
+
+        function filterItems() {
+            const category = document.getElementById('categoryFilter').value;
+            const locationId = document.getElementById('locationFilter').value;
+            
+            let filtered = allItems;
+            if (category) filtered = filtered.filter(i => i.category === category);
+            if (locationId) filtered = filtered.filter(i => i.location_id == locationId);
+            
+            renderItems(filtered);
+        }
+
+        async function showAddItemModal() {
+            await loadLocationsForSelect();
+            document.getElementById('addItemModal').classList.add('active');
+        }
+
+        async function showImportModal() {
+            document.getElementById('importModal').classList.add('active');
+        }
+
+        async function loadLocationsForSelect() {
+            allLocations = await api('/locations/') || [];
+            const flatten = (locs, level = 0) => {
+                let result = [];
+                locs.forEach(l => {
+                    result.push({ ...l, level });
+                    if (l.children && l.children.length) {
+                        result = result.concat(flatten(l.children, level + 1));
+                    }
+                });
+                return result;
+            };
+            const flat = flatten(allLocations);
+            
+            ['itemLocation', 'editItemLocation', 'parentLocation', 'purchaseLocation'].forEach(id => {
+                const select = document.getElementById(id);
+                if (select) {
+                    const current = select.value;
+                    select.innerHTML = id === 'parentLocation' ? '<option value="">无（一级位置）</option>' : '<option value="">未选择</option>';
+                    flat.forEach(l => {
+                        const option = document.createElement('option');
+                        option.value = l.id;
+                        option.textContent = '　'.repeat(l.level) + l.name;
+                        if (l.id == current) option.selected = true;
+                        select.appendChild(option);
+                    });
+                }
+            });
+        }
+
+        async function addItem() {
+            const data = {
+                name: document.getElementById('itemName').value,
+                category: document.getElementById('itemCategory').value,
+                quantity: parseFloat(document.getElementById('itemQuantity').value) || 0,
+                unit: document.getElementById('itemUnit').value,
+                spec: document.getElementById('itemSpec').value || null,
+                location_id: parseInt(document.getElementById('itemLocation').value) || null,
+                expiry_date: document.getElementById('itemExpiry').value || null,
+                price: parseFloat(document.getElementById('itemPrice').value) || null,
+                low_stock_threshold: parseFloat(document.getElementById('itemLowStock').value) || 0,
+                remarks: document.getElementById('itemRemarks').value || null
+            };
+            
+            await api('/items/', 'POST', data);
+            closeModal('addItemModal');
+            loadItems();
+            loadDashboard();
+        }
+
+        async function editItem(id) {
+            const item = allItems.find(i => i.id === id);
+            if (!item) return;
+            
+            document.getElementById('editItemId').value = item.id;
+            document.getElementById('editItemName').value = item.name;
+            document.getElementById('editItemCategory').value = item.category;
+            document.getElementById('editItemQuantity').value = item.quantity;
+            document.getElementById('editItemUnit').value = item.unit;
+            document.getElementById('editItemSpec').value = item.spec || '';
+            document.getElementById('editItemExpiry').value = item.expiry_date ? item.expiry_date.split('T')[0] : '';
+            document.getElementById('editItemPrice').value = item.price || '';
+            document.getElementById('editItemLowStock').value = item.low_stock_threshold || 0;
+            document.getElementById('editItemRemarks').value = item.remarks || '';
+            
+            await loadLocationsForSelect();
+            if (item.location_id) {
+                document.getElementById('editItemLocation').value = item.location_id;
+            }
+            
+            document.getElementById('editItemModal').classList.add('active');
+        }
+
+        async function saveItemEdit() {
+            const id = parseInt(document.getElementById('editItemId').value);
+            const data = {
+                name: document.getElementById('editItemName').value,
+                category: document.getElementById('editItemCategory').value,
+                quantity: parseFloat(document.getElementById('editItemQuantity').value) || 0,
+                unit: document.getElementById('editItemUnit').value,
+                spec: document.getElementById('editItemSpec').value || null,
+                location_id: parseInt(document.getElementById('editItemLocation').value) || null,
+                expiry_date: document.getElementById('editItemExpiry').value || null,
+                price: parseFloat(document.getElementById('editItemPrice').value) || null,
+                low_stock_threshold: parseFloat(document.getElementById('editItemLowStock').value) || 0,
+                remarks: document.getElementById('editItemRemarks').value || null
+            };
+            
+            await api(`/items/${id}/`, 'PUT', data);
+            closeModal('editItemModal');
+            loadItems();
+            loadDashboard();
+        }
+
+        async function deleteItem(id) {
+            if (confirm('确定要删除此物品吗？')) {
+                await api(`/items/${id}/`, 'DELETE');
+                loadItems();
+                loadDashboard();
+            }
+        }
+
+        async function importItems(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const res = await fetch('/items/import/', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            
+            const data = await res.json();
+            alert(`成功导入 ${data.imported} 个物品`);
+            closeModal('importModal');
+            loadItems();
+            loadDashboard();
+        }
+
+        let quickInOutItemId = null;
+        let quickInOutType = null;
+
+        async function showQuickInOut(itemId, type) {
+            quickInOutItemId = itemId;
+            quickInOutType = type;
+            
+            const item = allItems.find(i => i.id === itemId);
+            if (!item) return;
+            
+            const recordItemSelect = document.getElementById('recordItem');
+            recordItemSelect.innerHTML = `<option value="${item.id}">${item.name}</option>`;
+            document.getElementById('recordType').value = type === 'in' ? '入库' : '出库';
+            
+            document.getElementById('addRecordModal').classList.add('active');
+        }
+
+        async function loadLocations() {
+            if (!currentFamilyId) return;
+            
+            allLocations = await api('/locations/') || [];
+            renderLocationTree(allLocations, document.getElementById('locationTree'));
+        }
+
+        function renderLocationTree(locations, container, level = 1) {
+            container.innerHTML = '';
+            locations.forEach(loc => {
+                const li = document.createElement('li');
+                li.className = `location-item location-level-${level}`;
+                li.innerHTML = `
+                    <div class="location-header">
+                        <span>${loc.name}</span>
+                        <div>
+                            <button class="btn btn-sm btn-secondary" onclick="addChildLocation(${loc.id})" style="padding: 4px 8px; font-size: 12px;">+ 子位置</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteLocation(${loc.id})" style="padding: 4px 8px; font-size: 12px;">删除</button>
+                        </div>
+                    </div>
+                `;
+                
+                if (loc.children && loc.children.length > 0) {
+                    const childrenUl = document.createElement('ul');
+                    childrenUl.className = 'location-children';
+                    renderLocationTree(loc.children, childrenUl, level + 1);
+                    li.appendChild(childrenUl);
+                }
+                
+                container.appendChild(li);
+            });
+        }
+
+        async function showAddLocationModal() {
+            await loadLocationsForSelect();
+            document.getElementById('addLocationModal').classList.add('active');
+        }
+
+        let addingChildTo = null;
+
+        async function addChildLocation(parentId) {
+            addingChildTo = parentId;
+            await loadLocationsForSelect();
+            document.getElementById('parentLocation').value = parentId;
+            document.getElementById('addLocationModal').classList.add('active');
+        }
+
+        async function addLocation() {
+            const data = {
+                name: document.getElementById('locationName').value,
+                parent_id: parseInt(document.getElementById('parentLocation').value) || null
+            };
+            
+            await api('/locations/', 'POST', data);
+            closeModal('addLocationModal');
+            addingChildTo = null;
+            loadLocations();
+        }
+
+        async function deleteLocation(id) {
+            if (confirm('确定要删除此位置及其所有子位置吗？')) {
+                await api(`/locations/${id}/`, 'DELETE');
+                loadLocations();
+            }
+        }
+
+        async function showAddRecordModal() {
+            const recordItemSelect = document.getElementById('recordItem');
+            recordItemSelect.innerHTML = '';
+            allItems.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.name;
+                recordItemSelect.appendChild(option);
+            });
+            document.getElementById('addRecordModal').classList.add('active');
+        }
+
+        async function addRecord() {
+            const data = {
+                item_id: parseInt(document.getElementById('recordItem').value),
+                operation_type: document.getElementById('recordType').value,
+                quantity_change: parseFloat(document.getElementById('recordQuantity').value) || 0,
+                remarks: document.getElementById('recordRemarks').value || null
+            };
+            
+            await api('/inventory/record/', 'POST', data);
+            closeModal('addRecordModal');
+            loadItems();
+            loadRecords();
+            loadDashboard();
+        }
+
+        async function loadRecords() {
+            if (!currentFamilyId) return;
+            
+            const list = document.getElementById('recordsList');
+            list.innerHTML = '加载中...';
+            
+            let allRecords = [];
+            for (const item of allItems) {
+                const records = await api(`/inventory/records/${item.id}/`) || [];
+                records.forEach(r => {
+                    r.item_name = item.name;
+                    allRecords.push(r);
+                });
+            }
+            
+            allRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            list.innerHTML = '';
+            allRecords.forEach(record => {
+                const div = document.createElement('div');
+                div.className = 'record-item';
+                const typeClass = record.operation_type === '入库' ? 'in' : 
+                                 record.operation_type === '出库' ? 'out' : 
+                                 record.operation_type === '消耗' ? 'consume' : 'adjust';
+                div.innerHTML = `
+                    <div class="record-header">
+                        <span style="font-weight: 600;">${record.item_name}</span>
+                        <span class="record-type ${typeClass}">${record.operation_type}</span>
+                    </div>
+                    <p>变更数量：${record.quantity_change} | 变更后：${record.quantity_after}</p>
+                    <p style="color: #7f8c8d; font-size: 12px; margin-top: 8px;">
+                        操作人：${record.operator ? record.operator.username : '未知'} | ${new Date(record.created_at).toLocaleString()}
+                        ${record.remarks ? ` | 备注：${record.remarks}` : ''}
+                    </p>
+                `;
+                list.appendChild(div);
+            });
+            
+            if (allRecords.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #95a5a6; padding: 40px;">暂无记录</p>';
+            }
+        }
+
+        async function loadWarnings() {
+            if (!currentFamilyId) return;
+            
+            const warnings = await api('/warnings/expiry/') || {};
+            
+            const expiredList = document.getElementById('expiredList');
+            expiredList.innerHTML = '';
+            (warnings.expired || []).forEach(item => {
+                expiredList.innerHTML += `
+                    <div class="item-card expired">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-meta">
+                            <span class="item-tag">${item.category}</span>
+                            <span class="item-tag" style="background: #fadbd8; color: #e74c3c;">已过期</span>
+                        </div>
+                        <p style="color: #e74c3c;">过期日期：${new Date(item.expiry_date).toLocaleDateString()}</p>
+                        <p>当前数量：${item.quantity} ${item.unit}</p>
+                    </div>
+                `;
+            });
+            if ((warnings.expired || []).length === 0) {
+                expiredList.innerHTML = '<p style="text-align: center; color: #27ae60; padding: 20px;">✓ 没有已过期物品</p>';
+            }
+            
+            const expiringList = document.getElementById('expiringList');
+            expiringList.innerHTML = '';
+            (warnings.expiring || []).forEach(item => {
+                expiringList.innerHTML += `
+                    <div class="item-card expiring">
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-meta">
+                            <span class="item-tag">${item.category}</span>
+                            <span class="item-tag" style="background: #fff3cd; color: #856404;">即将过期</span>
+                        </div>
+                        <p style="color: #856404;">过期日期：${new Date(item.expiry_date).toLocaleDateString()}</p>
+                        <p>当前数量：${item.quantity} ${item.unit}</p>
+                    </div>
+                `;
+            });
+            if ((warnings.expiring || []).length === 0) {
+                expiringList.innerHTML = '<p style="text-align: center; color: #27ae60; padding: 20px;">✓ 没有即将过期物品</p>';
+            }
+        }
+
+        async function setCategoryWarning() {
+            const category = document.getElementById('warningCategory').value;
+            const days = parseInt(document.getElementById('warningDays').value);
+            
+            if (!category || !days) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            await api('/warnings/category/', 'POST', { category, warning_days: days });
+            alert('设置成功');
+            loadWarnings();
+        }
+
+        async function loadShoppingList() {
+            if (!currentFamilyId) return;
+            
+            const items = await api('/shopping-list/') || [];
+            const list = document.getElementById('shoppingList');
+            list.innerHTML = '';
+            
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `shopping-item ${item.is_purchased ? 'purchased' : ''}`;
+                div.innerHTML = `
+                    ${!item.is_purchased ? `<input type="checkbox" class="shopping-checkbox" onchange="showPurchaseModal(${item.id})">` : ''}
+                    <div class="shopping-name">
+                        ${item.item_name}
+                        ${item.is_auto_generated ? '<span class="auto-badge">智能推荐</span>' : ''}
+                    </div>
+                    <span class="shopping-qty">${item.suggested_quantity || item.actual_quantity || ''} ${item.unit || ''}</span>
+                    ${!item.is_purchased ? `<button class="btn btn-sm btn-danger" onclick="deleteShoppingItem(${item.id})" style="padding: 4px 8px;">删除</button>` : ''}
+                `;
+                list.appendChild(div);
+            });
+            
+            if (items.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #95a5a6; padding: 40px;">购物清单为空，点击上方按钮智能生成或手动添加</p>';
+            }
+        }
+
+        async function generateShoppingList() {
+            const res = await api('/shopping-list/generate/', 'POST');
+            if (res) {
+                alert(`已生成 ${res.generated} 个推荐项目`);
+                loadShoppingList();
+            }
+        }
+
+        async function addShoppingItem() {
+            const name = prompt('请输入物品名称：');
+            if (!name) return;
+            const qty = prompt('请输入数量：');
+            const unit = prompt('请输入单位：');
+            
+            await api('/shopping-list/', 'POST', {
+                item_name: name,
+                suggested_quantity: qty ? parseFloat(qty) : null,
+                unit: unit || null
+            });
+            loadShoppingList();
+        }
+
+        async function showPurchaseModal(itemId) {
+            document.getElementById('purchaseItemId').value = itemId;
+            await loadLocationsForSelect();
+            document.getElementById('shoppingPurchaseModal').classList.add('active');
+        }
+
+        async function confirmPurchase() {
+            const itemId = parseInt(document.getElementById('purchaseItemId').value);
+            const data = {
+                actual_quantity: parseFloat(document.getElementById('purchaseQuantity').value) || 0,
+                unit: document.getElementById('purchaseUnit').value,
+                location_id: parseInt(document.getElementById('purchaseLocation').value) || null,
+                price: parseFloat(document.getElementById('purchasePrice').value) || null
+            };
+            
+            await api(`/shopping-list/${itemId}/purchase/`, 'POST', data);
+            closeModal('shoppingPurchaseModal');
+            loadShoppingList();
+            loadItems();
+            loadDashboard();
+        }
+
+        async function deleteShoppingItem(id) {
+            if (confirm('确定要删除此项目吗？')) {
+                await api(`/shopping-list/${id}/`, 'DELETE');
+                loadShoppingList();
+            }
+        }
+
+        async function shareShoppingList() {
+            const res = await api('/shopping-list/share/');
+            if (res && res.text) {
+                navigator.clipboard.writeText(res.text).then(() => {
+                    alert('已复制到剪贴板！');
+                }).catch(() => {
+                    alert(res.text);
+                });
+            }
+        }
+
+        async function createFamily() {
+            const name = document.getElementById('newFamilyName').value;
+            const desc = document.getElementById('newFamilyDesc').value;
+            
+            if (!name) {
+                alert('请输入家庭名称');
+                return;
+            }
+            
+            await api('/families/', 'POST', { name, description: desc || null });
+            alert('创建成功');
+            await loadUserFamilies();
+        }
+
+        async function generateInvitation() {
+            if (!currentFamilyId) {
+                alert('请先选择家庭');
+                return;
+            }
+            
+            const res = await api('/invitations/', 'POST', { family_id: currentFamilyId });
+            if (res) {
+                document.getElementById('generatedCode').textContent = res.code;
+                document.getElementById('invitationResult').style.display = 'block';
+            }
+        }
+
+        async function loadMembers() {
+            if (!currentFamilyId) return;
+            
+            const members = await api(`/families/${currentFamilyId}/members/`) || [];
+            const list = document.getElementById('membersList');
+            list.innerHTML = '';
+            
+            members.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'shopping-item';
+                div.innerHTML = `
+                    <div class="shopping-name">${m.user.username}</div>
+                    <span class="item-tag">${m.role}</span>
+                    <span style="color: #7f8c8d; font-size: 12px;">加入时间：${new Date(m.joined_at).toLocaleDateString()}</span>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', e => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        window.onload = async function() {
+            if (token) {
+                await loadUserInfo();
+                if (currentUser) {
+                    showMain();
+                    return;
+                }
+            }
+            showAuth();
+        };
+    </script>
+</body>
+</html>
