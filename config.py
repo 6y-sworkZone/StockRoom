@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     DATABASE_URL: str = "sqlite+aiosqlite:///./stockroom.db"
+    WEBHOOK_URL: str = ""
 
     class Config:
         env_file = ".env"

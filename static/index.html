@@ -289,6 +289,9 @@
                         <input type="number" id="warningDays" value="7" min="1" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; width: 100px;">
                         <button class="btn btn-sm" onclick="setCategoryWarning()">设置预警天数</button>
                     </div>
+                    <div class="action-buttons" style="margin-top: 15px;">
+                        <button class="btn btn-sm btn-success" onclick="triggerWebhook()">📤 推送预警通知到 Webhook</button>
+                    </div>
                 </div>
             </div>
 
@@ -363,6 +366,10 @@
                 <select id="itemLocation"></select>
             </div>
             <div class="form-group">
+                <label>购入日期（选填）</label>
+                <input type="date" id="itemPurchaseDate">
+            </div>
+            <div class="form-group">
                 <label>过期日期（选填）</label>
                 <input type="date" id="itemExpiry">
             </div>
@@ -373,6 +380,11 @@
             <div class="form-group">
                 <label>低库存阈值</label>
                 <input type="number" id="itemLowStock" step="0.01" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>照片（选填）</label>
+                <input type="file" id="itemPhoto" accept="image/*">
+                <div id="itemPhotoPreview" style="margin-top: 10px;"></div>
             </div>
             <div class="form-group">
                 <label>备注（选填）</label>
@@ -414,6 +426,10 @@
                 <select id="editItemLocation"></select>
             </div>
             <div class="form-group">
+                <label>购入日期</label>
+                <input type="date" id="editItemPurchaseDate">
+            </div>
+            <div class="form-group">
                 <label>过期日期</label>
                 <input type="date" id="editItemExpiry">
             </div>
@@ -424,6 +440,11 @@
             <div class="form-group">
                 <label>低库存阈值</label>
                 <input type="number" id="editItemLowStock" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>照片</label>
+                <input type="file" id="editItemPhoto" accept="image/*">
+                <div id="editItemPhotoPreview" style="margin-top: 10px;"></div>
             </div>
             <div class="form-group">
                 <label>备注</label>
@@ -808,13 +829,15 @@
                 const card = document.createElement('div');
                 card.className = classes;
                 card.innerHTML = `
+                    ${item.photo_path ? `<div style="margin-bottom: 15px;"><img src="/uploads/${item.photo_path}" style="max-width: 100%; max-height: 150px; border-radius: 8px; object-fit: cover;"></div>` : ''}
                     <div class="item-name">${item.name}${item.spec ? ` (${item.spec})` : ''}</div>
                     <div class="item-meta">
                         <span class="item-tag">${item.category}</span>
                         ${item.location ? `<span class="item-tag">📍 ${item.location.name}</span>` : ''}
                     </div>
                     <div class="item-quantity">${item.quantity} ${item.unit}</div>
-                    ${item.expiry_date ? `<p style="margin-top: 10px; color: ${new Date(item.expiry_date) < new Date() ? '#e74c3c' : '#7f8c8d'}; font-size: 12px;">过期：${new Date(item.expiry_date).toLocaleDateString()}</p>` : ''}
+                    ${item.purchase_date ? `<p style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">购入：${new Date(item.purchase_date).toLocaleDateString()}</p>` : ''}
+                    ${item.expiry_date ? `<p style="margin-top: 5px; color: ${new Date(item.expiry_date) < new Date() ? '#e74c3c' : '#7f8c8d'}; font-size: 12px;">过期：${new Date(item.expiry_date).toLocaleDateString()}</p>` : ''}
                     ${item.remarks ? `<p style="margin-top: 10px; color: #7f8c8d; font-size: 12px;">${item.remarks}</p>` : ''}
                     <div class="item-actions">
                         <button class="btn btn-sm btn-success" onclick="showQuickInOut(${item.id}, 'in')">+ 入库</button>
@@ -914,14 +937,29 @@
                 unit: document.getElementById('itemUnit').value,
                 spec: document.getElementById('itemSpec').value || null,
                 location_id: parseInt(document.getElementById('itemLocation').value) || null,
+                purchase_date: document.getElementById('itemPurchaseDate').value || null,
                 expiry_date: document.getElementById('itemExpiry').value || null,
                 price: parseFloat(document.getElementById('itemPrice').value) || null,
                 low_stock_threshold: parseFloat(document.getElementById('itemLowStock').value) || 0,
                 remarks: document.getElementById('itemRemarks').value || null
             };
             
-            await api('/items/', 'POST', data);
+            const item = await api('/items/', 'POST', data);
+            
+            const photoFile = document.getElementById('itemPhoto').files[0];
+            if (photoFile && item) {
+                const formData = new FormData();
+                formData.append('file', photoFile);
+                await fetch(`/items/${item.id}/photo/`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+            }
+            
             closeModal('addItemModal');
+            document.getElementById('itemPhoto').value = '';
+            document.getElementById('itemPhotoPreview').innerHTML = '';
             loadItems();
             loadDashboard();
         }
@@ -936,10 +974,18 @@
             document.getElementById('editItemQuantity').value = item.quantity;
             document.getElementById('editItemUnit').value = item.unit;
             document.getElementById('editItemSpec').value = item.spec || '';
+            document.getElementById('editItemPurchaseDate').value = item.purchase_date ? item.purchase_date.split('T')[0] : '';
             document.getElementById('editItemExpiry').value = item.expiry_date ? item.expiry_date.split('T')[0] : '';
             document.getElementById('editItemPrice').value = item.price || '';
             document.getElementById('editItemLowStock').value = item.low_stock_threshold || 0;
             document.getElementById('editItemRemarks').value = item.remarks || '';
+            
+            const photoPreview = document.getElementById('editItemPhotoPreview');
+            if (item.photo_path) {
+                photoPreview.innerHTML = `<img src="/uploads/${item.photo_path}" style="max-width: 200px; max-height: 200px; border-radius: 8px;">`;
+            } else {
+                photoPreview.innerHTML = '';
+            }
             
             await loadLocationsForSelect();
             if (item.location_id) {
@@ -958,6 +1004,7 @@
                 unit: document.getElementById('editItemUnit').value,
                 spec: document.getElementById('editItemSpec').value || null,
                 location_id: parseInt(document.getElementById('editItemLocation').value) || null,
+                purchase_date: document.getElementById('editItemPurchaseDate').value || null,
                 expiry_date: document.getElementById('editItemExpiry').value || null,
                 price: parseFloat(document.getElementById('editItemPrice').value) || null,
                 low_stock_threshold: parseFloat(document.getElementById('editItemLowStock').value) || 0,
@@ -965,7 +1012,21 @@
             };
             
             await api(`/items/${id}/`, 'PUT', data);
+            
+            const photoFile = document.getElementById('editItemPhoto').files[0];
+            if (photoFile) {
+                const formData = new FormData();
+                formData.append('file', photoFile);
+                await fetch(`/items/${id}/photo/`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+            }
+            
             closeModal('editItemModal');
+            document.getElementById('editItemPhoto').value = '';
+            document.getElementById('editItemPhotoPreview').innerHTML = '';
             loadItems();
             loadDashboard();
         }
@@ -1024,12 +1085,18 @@
 
         function renderLocationTree(locations, container, level = 1) {
             container.innerHTML = '';
-            locations.forEach(loc => {
+            container.setAttribute('data-level', level);
+            
+            locations.forEach((loc, index) => {
                 const li = document.createElement('li');
                 li.className = `location-item location-level-${level}`;
+                li.draggable = true;
+                li.dataset.id = loc.id;
+                li.dataset.sortOrder = loc.sort_order;
+                
                 li.innerHTML = `
-                    <div class="location-header">
-                        <span>${loc.name}</span>
+                    <div class="location-header" style="cursor: grab;">
+                        <span>☰ ${loc.name}</span>
                         <div>
                             <button class="btn btn-sm btn-secondary" onclick="addChildLocation(${loc.id})" style="padding: 4px 8px; font-size: 12px;">+ 子位置</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteLocation(${loc.id})" style="padding: 4px 8px; font-size: 12px;">删除</button>
@@ -1043,6 +1110,68 @@
                     renderLocationTree(loc.children, childrenUl, level + 1);
                     li.appendChild(childrenUl);
                 }
+                
+                li.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        id: loc.id,
+                        level: level,
+                        parentId: loc.parent_id || null
+                    }));
+                    li.style.opacity = '0.5';
+                });
+                
+                li.addEventListener('dragend', () => {
+                    li.style.opacity = '1';
+                });
+                
+                li.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    li.style.borderTop = '2px solid #667eea';
+                });
+                
+                li.addEventListener('dragleave', () => {
+                    li.style.borderTop = 'none';
+                });
+                
+                li.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    li.style.borderTop = 'none';
+                    
+                    const draggedData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                    const draggedId = draggedData.id;
+                    
+                    if (draggedId === loc.id || draggedData.level !== level) {
+                        return;
+                    }
+                    
+                    const siblings = Array.from(container.children);
+                    const draggedItem = siblings.find(item => parseInt(item.dataset.id) === draggedId);
+                    const targetIndex = siblings.indexOf(li);
+                    const draggedIndex = siblings.indexOf(draggedItem);
+                    
+                    if (draggedItem && targetIndex !== -1) {
+                        if (draggedIndex < targetIndex) {
+                            container.insertBefore(draggedItem, li.nextSibling);
+                        } else {
+                            container.insertBefore(draggedItem, li);
+                        }
+                        
+                        const newSiblings = Array.from(container.children);
+                        const order = newSiblings.map((item, idx) => ({
+                            id: parseInt(item.dataset.id),
+                            sort_order: idx + 1
+                        }));
+                        
+                        await fetch('/locations/reorder/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify(order)
+                        });
+                    }
+                });
                 
                 container.appendChild(li);
             });
@@ -1207,6 +1336,11 @@
             await api('/warnings/category/', 'POST', { category, warning_days: days });
             alert('设置成功');
             loadWarnings();
+        }
+
+        async function triggerWebhook() {
+            await api('/warnings/expiry/?trigger_webhook=true');
+            alert('已推送预警通知到配置的 Webhook 地址');
         }
 
         async function loadShoppingList() {

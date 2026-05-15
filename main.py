@@ -3,6 +3,8 @@ from typing import List, Optional
 import uuid
 import os
 import pandas as pd
+import aiofiles
+import httpx
 from io import StringIO
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from database import get_db, engine, Base
+from config import get_settings
 from auth import get_current_active_user, create_access_token, authenticate_user, get_password_hash
 from models import (
     User, Family, FamilyMember, FamilyInvitation, Location, Item,
@@ -25,6 +28,8 @@ from schemas import (
     StatisticsResponse, ExpiryWarningResponse, CategoryWarningCreate, CategoryWarningResponse
 )
 
+settings = get_settings()
+
 app = FastAPI(title="家庭物品库存管理系统")
 
 os.makedirs("uploads", exist_ok=True)
@@ -36,6 +41,44 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def send_expiry_webhook(expired_items: List[Item], expiring_items: List[Item]):
+    if not settings.WEBHOOK_URL:
+        return
+    
+    try:
+        payload = {
+            "event": "expiry_warning",
+            "timestamp": datetime.utcnow().isoformat(),
+            "expired_count": len(expired_items),
+            "expiring_count": len(expiring_items),
+            "expired_items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "category": item.category,
+                    "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
+                    "quantity": item.quantity,
+                    "unit": item.unit
+                } for item in expired_items
+            ],
+            "expiring_items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "category": item.category,
+                    "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
+                    "quantity": item.quantity,
+                    "unit": item.unit
+                } for item in expiring_items
+            ]
+        }
+        
+        async with httpx.AsyncClient() as client:
+            await client.post(settings.WEBHOOK_URL, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Webhook 推送失败: {e}")
 
 
 @app.post("/token", response_model=Token)
@@ -355,6 +398,31 @@ async def delete_location(
     return {"message": "位置已删除"}
 
 
+@app.post("/locations/reorder/")
+async def reorder_locations(
+    order: List[dict],
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.current_family_id:
+        raise HTTPException(status_code=400, detail="请先选择一个家庭")
+    
+    for item in order:
+        location = await db.execute(
+            select(Location)
+            .where(and_(
+                Location.id == item["id"],
+                Location.family_id == current_user.current_family_id
+            ))
+        )
+        location = location.scalar_one_or_none()
+        if location:
+            location.sort_order = item["sort_order"]
+    
+    await db.commit()
+    return {"message": "排序更新成功"}
+
+
 @app.post("/items/", response_model=ItemResponse)
 async def create_item(
     item: ItemCreate,
@@ -510,6 +578,48 @@ async def delete_item(
     return {"message": "物品已移至回收站"}
 
 
+@app.post("/items/{item_id}/photo/")
+async def upload_item_photo(
+    item_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    item = await db.execute(
+        select(Item)
+        .where(and_(
+            Item.id == item_id,
+            Item.family_id == current_user.current_family_id
+        ))
+    )
+    item = item.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="物品不存在")
+    
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="请上传图片文件")
+    
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        raise HTTPException(status_code=400, detail="不支持的图片格式")
+    
+    filename = f"{uuid.uuid4()}{ext}"
+    filepath = os.path.join("uploads", filename)
+    
+    async with aiofiles.open(filepath, 'wb') as out_file:
+        content = await file.read()
+        await out_file.write(content)
+    
+    if item.photo_path:
+        old_path = os.path.join("uploads", item.photo_path)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    
+    item.photo_path = filename
+    await db.commit()
+    return {"photo_path": filename, "message": "照片上传成功"}
+
+
 @app.post("/items/import/")
 async def import_items(
     file: UploadFile = File(...),
@@ -662,6 +772,7 @@ async def reverse_record(
 
 @app.get("/warnings/expiry/", response_model=ExpiryWarningResponse)
 async def get_expiry_warnings(
+    trigger_webhook: bool = False,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -698,6 +809,9 @@ async def get_expiry_warnings(
             warning_date = now + timedelta(days=warning_days)
             if item.expiry_date <= warning_date or item.expiry_date <= thirty_days_later:
                 expiring_soon.append(item)
+    
+    if trigger_webhook and (expired or expiring_soon):
+        await send_expiry_webhook(expired, expiring_soon)
     
     return {"expired": expired, "expiring_soon": expiring_soon}
 
